@@ -1,0 +1,6 @@
+__pycache__
+.venv
+.venv/
+venv/
+knowledge_base/
+uploaded_documents/
