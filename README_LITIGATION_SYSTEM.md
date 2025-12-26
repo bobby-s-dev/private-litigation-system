@@ -11,6 +11,7 @@ A comprehensive, secure AI assistant built with Gradio to organize, analyze, and
   - Word documents (.doc, .docx)
   - Text files (.txt)
   - Financial records (.csv, .xlsx, .xls)
+- **Google Drive Integration** - Import documents directly from Google Drive
 - Automatic document classification
 - Metadata extraction (parties, dates, topics)
 - Deduplication support
@@ -59,6 +60,61 @@ A comprehensive, secure AI assistant built with Gradio to organize, analyze, and
    ```bash
    pip install faiss-gpu
    ```
+
+3. **Configure Authentication and Secrets (Optional but Recommended):**
+   
+   The system supports authentication and external secrets management through environment variables.
+   
+   a. Copy the example environment file:
+      ```bash
+      cp env.example .env
+      ```
+   
+   b. Edit `.env` file and configure your settings:
+      - Set `AUTH_ENABLED=true` to enable authentication
+      - Set `AUTH_USERNAME` and `AUTH_PASSWORD` for login credentials
+      - Configure server settings (host, port)
+      - Add API keys if using external AI services
+   
+   **Important:** The `.env` file is automatically excluded from version control. Never commit it!
+   
+   See `env.example` for all available configuration options.
+
+4. **Optional: Set up Google Drive Integration:**
+   
+   To import documents directly from Google Drive:
+   
+   a. **Enable Google Drive API:**
+      - Go to [Google Cloud Console](https://console.cloud.google.com/)
+      - Create a new project or select an existing one
+      - Enable the "Google Drive API" in the API Library
+   
+   b. **Create OAuth 2.0 Credentials:**
+      - Go to "APIs & Services" > "Credentials"
+      - Click "Create Credentials" > "OAuth client ID"
+      - Choose "Desktop app" as the application type
+      - Download the credentials JSON file
+      - Save it as `google_drive_credentials.json` in your project directory
+   
+   c. **Configure in `.env` file:**
+      ```bash
+      GOOGLE_DRIVE_ENABLED=true
+      GOOGLE_DRIVE_CREDENTIALS_FILE=./google_drive_credentials.json
+      GOOGLE_DRIVE_TOKEN_FILE=./google_drive_token.json
+      # Optional: Set a specific folder ID to sync
+      # GOOGLE_DRIVE_FOLDER_ID=your_folder_id_here
+      ```
+   
+   d. **Install Google Drive libraries:**
+      ```bash
+      pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
+      ```
+   
+   e. **First-time authentication:**
+      - When you first use Google Drive import, a browser window will open
+      - Sign in with your Google account
+      - Grant permission to access your Google Drive
+      - The token will be saved for future use
 
 ## Usage
 
@@ -112,10 +168,22 @@ The application will launch at `http://localhost:7860`
 
 ```
 litigation_system.py          # Main Gradio application
+├── config.py                 # Environment variables and secrets management
 ├── document_processor.py     # Document ingestion and processing
 ├── knowledge_base.py         # Vector storage and retrieval
-└── ai_analyzer.py            # AI-powered analysis
+├── ai_analyzer.py            # AI-powered analysis
+└── google_drive_integration.py  # Google Drive API integration
 ```
+
+### Configuration Management
+
+The system uses `config.py` to manage all secrets and configuration:
+- **Environment Variables**: Loaded from `.env` file (not in version control)
+- **Authentication**: Username/password from environment variables
+- **API Keys**: External service keys stored securely
+- **Server Settings**: Host, port, and other runtime settings
+
+All sensitive data lives outside the codebase in the `.env` file.
 
 ### Document Processing Flow
 
@@ -140,6 +208,27 @@ litigation_system.py          # Main Gradio application
 - ✅ Documents stored securely on your machine
 - ✅ No cloud dependencies
 - ✅ Full control over your data
+- ✅ **Authentication support** - Protect your system with username/password
+- ✅ **Secrets management** - All credentials stored outside codebase in `.env` file
+- ✅ **Environment-based configuration** - No hardcoded secrets in source code
+
+### Authentication Setup
+
+To enable authentication:
+
+1. Create a `.env` file from `env.example`
+2. Set `AUTH_ENABLED=true`
+3. Set `AUTH_USERNAME` and `AUTH_PASSWORD` to your desired credentials
+4. Restart the application
+
+The system will require login before accessing any features.
+
+**Security Best Practices:**
+- Use strong, unique passwords
+- Never commit `.env` file to version control
+- Rotate passwords regularly
+- Use environment variables in production deployments
+- Consider using a secrets management service for production
 
 ## Customization
 
@@ -215,9 +304,24 @@ Potential improvements:
 - [ ] Integration with local LLMs (Ollama, GPT4All)
 - [ ] Advanced contradiction detection using NLP models
 - [ ] Export capabilities (PDF reports, Excel timelines)
-- [ ] Multi-user support with authentication
+- [x] Multi-user support with authentication ✅ **COMPLETED**
+- [x] Google Drive integration ✅ **COMPLETED**
 - [ ] Document versioning and change tracking
 - [ ] Advanced visualization (network graphs, timeline charts)
 - [ ] Integration with legal research databases
+- [ ] OAuth2/SSO integration
+- [ ] Role-based access control (RBAC)
+- [ ] Automatic Google Drive sync (watch for changes)
+- [ ] Support for other cloud storage (Dropbox, OneDrive)
 
+## License
+
+This system is built using Gradio (Apache 2.0 License) and other open-source libraries.
+
+## Support
+
+For issues or questions:
+1. Check the troubleshooting section
+2. Review Gradio documentation: https://www.gradio.app
+3. Check component gallery: https://www.gradio.app/custom-components/gallery
 

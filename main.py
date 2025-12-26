@@ -7,10 +7,20 @@ factual development for multiple overlapping legal cases.
 import gradio as gr
 import os
 import json
+import shutil
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 import pandas as pd
+
+# Import configuration module for environment variables and secrets
+try:
+    from config import Config
+    print("✓ Configuration module loaded")
+except ImportError as e:
+    print(f"⚠ Warning: Could not import config module: {e}")
+    print("  Authentication and environment variables will not be available")
+    Config = None
 
 # Import our custom modules
 try:
@@ -20,11 +30,38 @@ try:
     
     # Initialize core components
     doc_processor = DocumentProcessor()
-    knowledge_base = KnowledgeBase()
+    
+    # Use knowledge base directory from config if available
+    kb_dir = Config.KNOWLEDGE_BASE_DIR if Config else "./knowledge_base"
+    knowledge_base = KnowledgeBase(storage_dir=kb_dir)
     ai_analyzer = AIAnalyzer()
     
+    # Initialize Google Drive integration if enabled
+    google_drive = None
+    if Config and Config.GOOGLE_DRIVE_ENABLED:
+        try:
+            from google_drive_integration import GoogleDriveIntegration
+            credentials_file = Config.GOOGLE_DRIVE_CREDENTIALS_FILE
+            token_file = Config.GOOGLE_DRIVE_TOKEN_FILE
+            if credentials_file:
+                google_drive = GoogleDriveIntegration(
+                    credentials_file=credentials_file,
+                    token_file=token_file
+                )
+                print("✓ Google Drive integration initialized")
+            else:
+                print("⚠ Google Drive enabled but GOOGLE_DRIVE_CREDENTIALS_FILE not set")
+        except ImportError as e:
+            print(f"⚠ Google Drive libraries not available: {e}")
+        except Exception as e:
+            print(f"⚠ Error initializing Google Drive: {e}")
+    
     # Create documents storage directory for permanent file storage
-    DOCUMENTS_STORAGE_DIR = Path("./uploaded_documents")
+    # Use directory from config if available
+    if Config:
+        DOCUMENTS_STORAGE_DIR = Path(Config.DOCUMENTS_STORAGE_DIR)
+    else:
+        DOCUMENTS_STORAGE_DIR = Path("./uploaded_documents")
     DOCUMENTS_STORAGE_DIR.mkdir(exist_ok=True)
     print("✓ All modules loaded successfully")
     print(f"✓ Documents will be saved to: {DOCUMENTS_STORAGE_DIR.absolute()}")
@@ -115,6 +152,170 @@ def process_uploaded_files(files):
     doc_list = [[doc['name'], doc['type'], doc['status']] for doc in uploaded_documents]
     
     return status_text, doc_list
+
+
+def import_from_google_drive(folder_id: Optional[str] = None, file_types: Optional[List[str]] = None):
+    """Import documents from Google Drive"""
+    if not google_drive:
+        return "Google Drive integration is not enabled or configured. Check your .env file.", []
+    
+    try:
+        # Authenticate if needed
+        if not google_drive.service:
+            auth_result = google_drive.authenticate()
+            if not auth_result:
+                return "Failed to authenticate with Google Drive. Please check your credentials.", []
+        
+        # Use folder ID from config if not provided
+        if not folder_id and Config and Config.GOOGLE_DRIVE_FOLDER_ID:
+            folder_id = Config.GOOGLE_DRIVE_FOLDER_ID
+        
+        # Get supported MIME types
+        from google_drive_integration import get_supported_mime_types
+        supported_mimes = file_types if file_types else get_supported_mime_types()
+        
+        # List files
+        status_messages = []
+        status_messages.append("📥 Fetching files from Google Drive...")
+        
+        files = google_drive.list_files(folder_id=folder_id, mime_types=supported_mimes)
+        
+        if not files:
+            return "No supported files found in Google Drive.", []
+        
+        status_messages.append(f"✓ Found {len(files)} file(s) in Google Drive")
+        
+        # Download and process files
+        processed_files = []
+        for file_info in files:
+            file_id = file_info['id']
+            file_name = file_info['name']
+            mime_type = file_info.get('mimeType', '')
+            
+            try:
+                # Create temp directory for downloads
+                temp_dir = DOCUMENTS_STORAGE_DIR / "google_drive_temp"
+                temp_dir.mkdir(exist_ok=True)
+                
+                # Determine if it's a Google Workspace file that needs export
+                is_google_doc = mime_type.startswith('application/vnd.google-apps.')
+                
+                if is_google_doc:
+                    # Export Google Docs/Sheets/Slides
+                    export_mime = 'application/pdf'  # Default export format
+                    file_ext = '.pdf'
+                    if 'document' in mime_type:
+                        export_mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                        file_ext = '.docx'
+                    elif 'spreadsheet' in mime_type:
+                        export_mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                        file_ext = '.xlsx'
+                    elif 'presentation' in mime_type:
+                        export_mime = 'application/pdf'
+                        file_ext = '.pdf'
+                    
+                    # Remove existing extension if present and add correct one
+                    base_name = file_name.rsplit('.', 1)[0] if '.' in file_name else file_name
+                    dest_path = temp_dir / f"{base_name}{file_ext}"
+                    downloaded_path = google_drive.export_google_doc(file_id, export_mime, str(dest_path))
+                else:
+                    # Regular file download
+                    dest_path = temp_dir / file_name
+                    downloaded_path = google_drive.download_file(file_id, str(dest_path))
+                
+                if downloaded_path:
+                    # Process the downloaded file
+                    result = doc_processor.process_document(downloaded_path)
+                    
+                    if result['success']:
+                        # Move to permanent storage
+                        safe_filename = "".join(c for c in file_name if c.isalnum() or c in "._- ")
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        name_parts = safe_filename.rsplit('.', 1)
+                        if len(name_parts) == 2:
+                            safe_filename = f"{name_parts[0]}_{timestamp}.{name_parts[1]}"
+                        else:
+                            safe_filename = f"{safe_filename}_{timestamp}"
+                        
+                        permanent_path = DOCUMENTS_STORAGE_DIR / safe_filename
+                        shutil.move(downloaded_path, permanent_path)
+                        
+                        # Store in knowledge base
+                        doc_id = knowledge_base.add_document(
+                            content=result['content'],
+                            metadata={
+                                'file_name': file_name,
+                                'file_path': str(permanent_path.absolute()),
+                                'source': 'google_drive',
+                                'google_drive_id': file_id,
+                                'doc_type': result['doc_type'],
+                                'upload_date': datetime.now().isoformat(),
+                                'parties': result.get('parties', []),
+                                'dates': result.get('dates', []),
+                                'topics': result.get('topics', [])
+                            }
+                        )
+                        
+                        uploaded_documents.append({
+                            'id': doc_id,
+                            'name': file_name,
+                            'type': result['doc_type'],
+                            'status': 'Processed'
+                        })
+                        
+                        document_metadata[doc_id] = result
+                        processed_files.append([file_name, result['doc_type'], 'Processed'])
+                        status_messages.append(f"✓ {file_name} - Processed successfully")
+                    else:
+                        status_messages.append(f"✗ {file_name} - Error: {result.get('error', 'Unknown error')}")
+                else:
+                    status_messages.append(f"✗ {file_name} - Failed to download")
+                    
+            except Exception as e:
+                status_messages.append(f"✗ {file_name} - Exception: {str(e)}")
+        
+        status_text = "\n".join(status_messages)
+        return status_text, processed_files
+        
+    except Exception as e:
+        return f"Error importing from Google Drive: {str(e)}", []
+
+
+def list_google_drive_files(folder_id: Optional[str] = None):
+    """List files available in Google Drive"""
+    if not google_drive:
+        return "Google Drive integration is not enabled or configured.", []
+    
+    try:
+        # Authenticate if needed
+        if not google_drive.service:
+            auth_result = google_drive.authenticate()
+            if not auth_result:
+                return "Failed to authenticate with Google Drive.", []
+        
+        # Use folder ID from config if not provided
+        if not folder_id and Config and Config.GOOGLE_DRIVE_FOLDER_ID:
+            folder_id = Config.GOOGLE_DRIVE_FOLDER_ID
+        
+        from google_drive_integration import get_supported_mime_types
+        files = google_drive.list_files(folder_id=folder_id, mime_types=get_supported_mime_types())
+        
+        if not files:
+            return "No supported files found in Google Drive.", []
+        
+        file_list = []
+        for file_info in files:
+            file_list.append([
+                file_info.get('name', 'Unknown'),
+                file_info.get('mimeType', 'Unknown'),
+                file_info.get('size', 'N/A'),
+                file_info.get('modifiedTime', 'N/A')[:10] if file_info.get('modifiedTime') else 'N/A'
+            ])
+        
+        return f"Found {len(files)} file(s) in Google Drive:", file_list
+        
+    except Exception as e:
+        return f"Error listing Google Drive files: {str(e)}", []
 
 
 def query_knowledge_base(query: str, search_type: str = "semantic"):
@@ -383,6 +584,50 @@ with gr.Blocks(title="Private AI Litigation Knowledge System") as demo:
                 inputs=file_upload,
                 outputs=[upload_status, documents_table]
             )
+            
+            # Google Drive Integration Section
+            if google_drive:
+                gr.Markdown("---")
+                gr.Markdown("### 📥 Import from Google Drive")
+                gr.Markdown("Import documents directly from your Google Drive. "
+                           "Files will be downloaded and processed automatically.")
+                
+                with gr.Row():
+                    with gr.Column():
+                        drive_folder_id = gr.Textbox(
+                            label="Google Drive Folder ID (Optional)",
+                            placeholder="Leave empty to import all accessible files, or enter a specific folder ID",
+                            value=Config.GOOGLE_DRIVE_FOLDER_ID if Config else None
+                        )
+                        list_drive_btn = gr.Button("List Files in Google Drive", variant="secondary")
+                        import_drive_btn = gr.Button("Import from Google Drive", variant="primary")
+                
+                with gr.Row():
+                    drive_files_list = gr.Dataframe(
+                        label="Files Available in Google Drive",
+                        headers=["File Name", "Type", "Size", "Modified"],
+                        interactive=False,
+                        wrap=True
+                    )
+                
+                with gr.Row():
+                    drive_import_status = gr.Textbox(
+                        label="Google Drive Import Status",
+                        lines=10,
+                        interactive=False
+                    )
+                
+                list_drive_btn.click(
+                    fn=list_google_drive_files,
+                    inputs=drive_folder_id,
+                    outputs=[drive_import_status, drive_files_list]
+                )
+                
+                import_drive_btn.click(
+                    fn=import_from_google_drive,
+                    inputs=drive_folder_id,
+                    outputs=[drive_import_status, documents_table]
+                )
         
         # Tab 2: Knowledge Base Query
         with gr.Tab("🔍 Search & Query"):
@@ -587,16 +832,38 @@ if __name__ == "__main__":
     print("\n" + "="*60)
     print("Starting Private AI Litigation Knowledge System")
     print("="*60)
-    print(f"\n✓ Server starting on http://127.0.0.1:7860")
-    print(f"✓ Also accessible at http://localhost:7860")
-    print(f"\n⚠ IMPORTANT: Use http://localhost:7860 or http://127.0.0.1:7860")
-    print("   Do NOT use http://0.0.0.0:7860 in your browser\n")
-    print("="*60 + "\n")
+    
+    # Get configuration values
+    if Config:
+        Config.print_config_summary()
+        server_name = Config.SERVER_NAME
+        server_port = Config.SERVER_PORT
+        share = Config.SHARE
+        auth_tuple = Config.get_auth_tuple()
+    else:
+        server_name = "127.0.0.1"
+        server_port = 7860
+        share = False
+        auth_tuple = None
+        print("⚠ Running with default configuration (no config module)")
+    
+    print(f"\n✓ Server starting on http://{server_name}:{server_port}")
+    if server_name == "127.0.0.1":
+        print(f"✓ Also accessible at http://localhost:{server_port}")
+        print(f"\n⚠ IMPORTANT: Use http://localhost:{server_port} or http://127.0.0.1:{server_port}")
+        print("   Do NOT use http://0.0.0.0:{server_port} in your browser")
+    if auth_tuple:
+        print(f"\n🔒 Authentication ENABLED - Login required to access the system")
+    else:
+        print(f"\n⚠ Authentication DISABLED - System is open to anyone")
+        print("   Set AUTH_ENABLED=true in .env file to enable authentication")
+    print("\n" + "="*60 + "\n")
     
     demo.launch(
-        share=False, 
-        server_name="127.0.0.1", 
-        server_port=7860, 
+        share=share, 
+        server_name=server_name, 
+        auth=auth_tuple,  # Will be None if auth is disabled
+        server_port=server_port, 
         theme=gr.themes.Soft(),
         pwa=True,
         footer_links=[""]
