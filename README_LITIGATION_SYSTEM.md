@@ -121,7 +121,7 @@ A comprehensive, secure AI assistant built with Gradio to organize, analyze, and
 ### Starting the Application
 
 ```bash
-python litigation_system.py
+python main.py
 ```
 
 The application will launch at `http://localhost:7860`
@@ -167,7 +167,7 @@ The application will launch at `http://localhost:7860`
 ## System Architecture
 
 ```
-litigation_system.py          # Main Gradio application
+main.py          # Main Gradio application
 ├── config.py                 # Environment variables and secrets management
 ├── document_processor.py     # Document ingestion and processing
 ├── knowledge_base.py         # Vector storage and retrieval

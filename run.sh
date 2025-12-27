@@ -54,8 +54,8 @@ else
 fi
 
 # Check if required files exist
-if [ ! -f "litigation_system.py" ]; then
-    echo "[ERROR] litigation_system.py not found"
+if [ ! -f "main.py" ]; then
+    echo "[ERROR] main.py not found"
     echo "Please make sure you're in the correct directory"
     exit 1
 fi
@@ -84,7 +84,7 @@ echo "============================================================"
 echo ""
 
 # Run the application
-python3 litigation_system.py
+python3 main.py
 
 # Check exit status
 if [ $? -ne 0 ]; then

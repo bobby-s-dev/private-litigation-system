@@ -73,7 +73,7 @@ Windows includes a Python launcher that might work:
 ```bash
 py --version
 py -m venv .venv
-py litigation_system.py
+py main.py
 ```
 
 ## Verify Installation
@@ -124,7 +124,7 @@ python -m pip --version
      conda create -n litigation python=3.11
      conda activate litigation
      pip install -r litigation_requirements.txt
-     python litigation_system.py
+     python main.py
      ```
 
 ## Alternative: Use the Python You Have
@@ -145,6 +145,6 @@ If you have Python installed but the script can't find it, you can run manually:
    "C:\path\to\python.exe" -m venv .venv
    .venv\Scripts\activate
    pip install -r litigation_requirements.txt
-   python litigation_system.py
+   python main.py
    ```
 

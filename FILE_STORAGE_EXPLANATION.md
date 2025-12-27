@@ -93,7 +93,7 @@ To backup your litigation system:
 
 ## Changing Storage Location
 
-If you want to change where files are stored, edit `litigation_system.py`:
+If you want to change where files are stored, edit `main.py`:
 
 ```python
 # Line ~27

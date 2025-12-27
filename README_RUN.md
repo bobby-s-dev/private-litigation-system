@@ -74,7 +74,7 @@ pip install -r litigation_requirements.txt
 
 ### 4. Run Application
 ```bash
-python litigation_system.py
+python main.py
 ```
 
 ## Accessing the Application

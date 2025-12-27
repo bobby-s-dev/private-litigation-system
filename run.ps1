@@ -87,7 +87,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # Check if required files exist
 $requiredFiles = @(
-    "litigation_system.py",
+    "main.py",
     "document_processor.py",
     "knowledge_base.py",
     "ai_analyzer.py"
@@ -111,7 +111,7 @@ Write-Host "============================================================" -Foreg
 Write-Host ""
 
 # Run the application
-& $pythonCmd litigation_system.py
+& $pythonCmd main.py
 
 # Check exit status
 if ($LASTEXITCODE -ne 0) {

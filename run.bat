@@ -76,8 +76,8 @@ if errorlevel 1 (
 )
 
 REM Check if required files exist
-if not exist "litigation_system.py" (
-    echo [ERROR] litigation_system.py not found
+if not exist "main.py" (
+    echo [ERROR] main.py not found
     echo Please make sure you're in the correct directory
     pause
     exit /b 1
@@ -110,7 +110,7 @@ echo ============================================================
 echo.
 
 REM Run the application
-%PYTHON_CMD% litigation_system.py
+%PYTHON_CMD% main.py
 
 REM If the application exits, pause to see any error messages
 if errorlevel 1 (

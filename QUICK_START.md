@@ -9,7 +9,7 @@
 
 2. **Start the application:**
    ```bash
-   python litigation_system.py
+   python main.py
    ```
 
 3. **Open in browser:**
